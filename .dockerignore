@@ -1,0 +1,20 @@
+# Keep the build context small & reproducible.
+.git
+.github
+.claude
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+data/interim
+data/processed
+models/**/model.joblib
+models/**/*.json
+models/mlruns
+outputs
+logs
+docs/img
+*.md
+!README.md

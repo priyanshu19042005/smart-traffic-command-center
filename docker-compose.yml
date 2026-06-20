@@ -1,0 +1,60 @@
+# =====================================================================
+#  Smart Traffic Command Center — local / demo orchestration
+#
+#  Services:
+#    pipeline   one-shot: builds all artifacts & trains models, then exits
+#    api        FastAPI  -> http://localhost:8000  (docs at /docs)
+#    dashboard  Streamlit-> http://localhost:8501
+#
+#  Shared named volume keeps data/models/outputs in sync across services.
+#
+#  Usage:
+#    docker compose run --rm pipeline      # build artifacts first
+#    docker compose up api dashboard       # serve
+# =====================================================================
+services:
+
+  pipeline:
+    build: .
+    image: traffic-command-center:latest
+    command: python -m src.run_pipeline
+    volumes:
+      - artifacts:/app
+    restart: "no"
+
+  api:
+    image: traffic-command-center:latest
+    build: .
+    command: >
+      uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - artifacts:/app
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  dashboard:
+    image: traffic-command-center:latest
+    build: .
+    command: >
+      streamlit run dashboard/app.py
+      --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    ports:
+      - "8501:8501"
+    volumes:
+      - artifacts:/app
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  artifacts:

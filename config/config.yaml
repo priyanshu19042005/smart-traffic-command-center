@@ -1,0 +1,234 @@
+# =====================================================================
+#  Smart Traffic Command Center — Single Source of Truth
+#  Every module reads from this file. Change behaviour here, not in code.
+# =====================================================================
+
+project:
+  name: "Smart Traffic Command Center + Road Health Monitoring"
+  city: "Bengaluru"
+  random_seed: 42
+
+# ---------------------------------------------------------------------
+# Paths (relative to project root; resolved by src/utils/config.py)
+# ---------------------------------------------------------------------
+paths:
+  raw_csv: "Astram event data_anonymized - Astram event data_anonymizedb40ac87.csv"
+  data_raw: "data/raw"
+  data_interim: "data/interim"
+  data_processed: "data/processed"
+  processed_events: "data/processed/events_clean.parquet"
+  features: "data/processed/events_features.parquet"
+  models_dir: "models"
+  outputs_dir: "outputs"
+  logs_dir: "logs"
+
+# ---------------------------------------------------------------------
+# Schema — column groups drive ingest/validate/clean generically
+# ---------------------------------------------------------------------
+schema:
+  id_col: "id"
+  datetime_cols:
+    - start_datetime
+    - end_datetime
+    - created_date
+    - modified_datetime
+    - closed_datetime
+  geo:
+    lat: latitude
+    lon: longitude
+    end_lat: endlatitude
+    end_lon: endlongitude
+  group_keys: [corridor, zone, gba_identifier, police_station]
+  # Columns that are essentially empty / non-informative -> dropped
+  drop_cols:
+    - map_file
+    - comment
+    - meta_data
+    - direction
+    - route_path
+    - cargo_material
+    - reason_breakdown
+    - age_of_truck
+    - assigned_to_police_id
+    - citizen_accident_id
+    - resolved_at_address
+    - resolved_at_latitude
+    - resolved_at_longitude
+    - resolved_by_id
+    - resolved_datetime
+    - kgid
+    - veh_no
+    - end_address
+  categorical_features:
+    - event_type
+    - event_cause
+    - status
+    - veh_type
+    - corridor
+    - zone
+    - gba_identifier
+    - authenticated
+  # Bengaluru bounding box for geo validation
+  bbox: { lat_min: 12.6, lat_max: 13.4, lon_min: 77.2, lon_max: 77.9 }
+
+# ---------------------------------------------------------------------
+# Data validation gates (validate.py). Pipeline warns/fails on breach.
+# ---------------------------------------------------------------------
+validation:
+  fail_on_error: false          # if true, raises on any ERROR-level check
+  min_rows: 1000
+  required_columns: [id, event_cause, latitude, longitude, start_datetime, priority, requires_road_closure]
+  max_missing_pct:              # ERROR if a critical column exceeds this
+    latitude: 0.0
+    longitude: 0.0
+    event_cause: 0.0
+    start_datetime: 5.0
+  unique_key: id
+
+# ---------------------------------------------------------------------
+# Cleaning rules
+# ---------------------------------------------------------------------
+cleaning:
+  # Normalise messy categorical values -> canonical
+  event_cause_map:
+    "Debris": "debris"
+    "debris": "debris"
+    "Fog / Low Visibility": "fog"
+    "pot_holes": "pot_holes"
+    "water_logging": "water_logging"
+  dedup_subset: [latitude, longitude, start_datetime, event_cause]
+  priority_fill: "Low"
+  veh_type_fill: "not_applicable"
+  # Spatial imputation for missing zone / gba_identifier / corridor
+  spatial_impute:
+    enabled: true
+    fields: [zone, gba_identifier, corridor]
+    k_neighbors: 1
+
+# ---------------------------------------------------------------------
+# Feature engineering, incl. engineered risk_score target
+# ---------------------------------------------------------------------
+features:
+  # Severity weight per cause -> drives engineered risk_score (0-100)
+  cause_severity:
+    accident: 1.00
+    water_logging: 0.80
+    tree_fall: 0.75
+    construction: 0.55
+    pot_holes: 0.60
+    road_conditions: 0.55
+    vehicle_breakdown: 0.45
+    congestion: 0.50
+    debris: 0.40
+    fog: 0.70
+    public_event: 0.35
+    procession: 0.35
+    protest: 0.45
+    vip_movement: 0.40
+    test_demo: 0.10
+    others: 0.30
+  veh_mass_weight:        # heavier vehicle -> higher blocking risk
+    heavy_vehicle: 1.0
+    truck: 1.0
+    bmtc_bus: 0.9
+    ksrtc_bus: 0.9
+    private_bus: 0.85
+    lcv: 0.6
+    private_car: 0.4
+    taxi: 0.4
+    auto: 0.3
+    others: 0.3
+    not_applicable: 0.2
+  # risk_score = 100 * weighted blend of normalised components
+  risk_weights:
+    cause_severity: 0.40
+    closure: 0.20
+    priority_high: 0.15
+    duration: 0.15
+    veh_mass: 0.10
+
+# ---------------------------------------------------------------------
+# Road Health Index (RHI)  -- 100 = excellent, 0 = critical
+# ---------------------------------------------------------------------
+road_health:
+  # Causes that degrade road health and their weights (sum used to normalise)
+  degradation_weights:
+    pot_holes: 0.30
+    water_logging: 0.20
+    road_conditions: 0.20
+    construction: 0.10
+    vehicle_breakdown: 0.10
+    accident: 0.10
+  exposure_smoothing: 5      # Laplace smoothing for rates (per-segment)
+  categories:                # upper-bound thresholds (score <= bound)
+    Critical: 20
+    Poor: 40
+    Moderate: 60
+    Good: 80
+    Excellent: 100
+  group_levels: [corridor, zone]
+
+# ---------------------------------------------------------------------
+# Hotspot detection
+# ---------------------------------------------------------------------
+hotspots:
+  causes: [accident, vehicle_breakdown, water_logging, pot_holes]
+  dbscan:
+    eps_meters: 250          # neighbourhood radius
+    min_samples: 8
+  kmeans:
+    k: 12
+    auto_k: true             # pick k by silhouette over k_range
+    k_range: [6, 20]
+  risk_score:                # hotspot risk = blend of count & severity
+    count_weight: 0.6
+    severity_weight: 0.4
+
+# ---------------------------------------------------------------------
+# ML models
+# ---------------------------------------------------------------------
+models:
+  test_size: 0.2
+  cv_folds: 5
+  tuning: { enabled: true, n_iter: 25, scoring_clf: f1, scoring_reg: r2 }
+  feature_selection: { enabled: true, top_k: 25 }
+  registry_backend: "auto"   # auto -> mlflow if installed else local json
+  mlflow_experiment: "traffic_command_center"
+  tasks:
+    priority:
+      type: classification
+      target: priority
+      positive_label: High
+    closure:
+      type: classification
+      target: requires_road_closure
+      positive_label: true
+      class_weight: balanced
+    risk:
+      type: regression
+      target: risk_score
+
+# ---------------------------------------------------------------------
+# Forecasting
+# ---------------------------------------------------------------------
+forecast:
+  freq: D
+  horizons: { day: 1, week: 7, month: 30 }
+  test_days: 21
+  group_by: corridor          # also forecasts city-wide total
+  models: [prophet, xgboost, lstm, ets, naive]   # auto-skips uninstalled
+
+# ---------------------------------------------------------------------
+# Resource allocation
+# ---------------------------------------------------------------------
+resources:
+  fleet:
+    tow_trucks: 40
+    traffic_police: 60
+    maintenance_teams: 25
+  # which signals drive demand for each resource
+  drivers:
+    tow_trucks:        { breakdown: 0.6, accident: 0.3, risk: 0.1 }
+    traffic_police:    { accident: 0.35, congestion: 0.25, risk: 0.25, hotspot: 0.15 }
+    maintenance_teams: { road_health: 0.5, pot_holes: 0.3, water_logging: 0.2 }
+  min_per_zone: { tow_trucks: 0, traffic_police: 1, maintenance_teams: 0 }

@@ -33,7 +33,7 @@ modern **Smart City Command Center** UI and a documented API. Every component ru
 been **verified end-to-end on the real data**.
 
 > 🧭 New here? The **[Project Report & Technical Review](docs/PROJECT_REPORT.md)** has the full
-> graded breakdown, including why the classification targets are rule-derived in this dataset.
+> graded breakdown, including how target leakage was found and removed so the metrics are honest.
 
 ---
 
@@ -46,7 +46,7 @@ been **verified end-to-end on the real data**.
 | 📍 | **Hotspot Discovery** | DBSCAN density clusters + KMeans command zones per cause → **GeoJSON** export. |
 | 📈 | **Forecasting** | Next day/week/month incident volume; auto-selects Prophet / XGBoost / LSTM / ETS. |
 | 🚧 | **Resource Allocation** | Optimised tow-truck / police / maintenance deployment per zone (fleet-conserving). |
-| 🤖 | **ML Predictions** | Priority, road-closure and risk models with CV, tuning, registry and live scoring. |
+| 🤖 | **ML Predictions** | Priority, road-closure and resolution-time models (leakage-guarded) with CV, tuning, registry and live scoring. |
 
 Plus **Data Quality Monitoring** (12 validation gates) and a **REST API** for integrations.
 
@@ -107,9 +107,9 @@ Interactive Swagger UI at **`/docs`**. Highlights:
 curl -X POST http://localhost:8000/api/v1/predict -H "Content-Type: application/json" \
   -d '{"event_cause":"accident","corridor":"Hosur Road","veh_type":"heavy_vehicle","hour":18,
        "latitude":12.9081,"longitude":77.6476}'
-# → {"priority":{"label":"High","probability":0.997},
-#    "closure":{"label":"not_required","probability":0.005},
-#    "risk":{"value":69.71}, ...}
+# → {"priority":{"label":"High","probability":0.985},
+#    "closure":{"label":"not_required","probability":0.055},
+#    "resolution":{"value":0.9,"unit":"hours"}, ...}
 ```
 
 9 endpoints: `health · stats · road-health · hotspots · hotspots/geojson · forecast ·
@@ -167,13 +167,15 @@ flipkart/
 | Road Health | corridor mean **80.2** · zone mean **62.4** (worst: South Zone 2, 42.5) |
 | Hotspots | **133** DBSCAN clusters · top pothole hotspot = 71 incidents |
 | Forecast | city-wide **~84 incidents/day** (ETS auto-selected) |
-| Models | priority F1 **0.9995** · closure F1 **0.996** · risk R² **0.71** (MAE 5.8) |
+| Models (leakage-guarded) | priority ROC-AUC **0.89** · closure ROC-AUC **0.76** · resolution-time R² **0.46** |
 | Tests | **14 passed** in ~21 s |
 
-> ⚠️ **Note on these metrics:** the ~0.99 classification scores reflect that `priority`/`closure`
-> are **near-deterministic rules of `event_cause`** in this data — the models recover the
-> rule rather than predicting it. `risk_score` is an **engineered** (leak-guarded) proxy. Details in the
-> [Project Report](docs/PROJECT_REPORT.md#4-ml-quality--75--10).
+> ✅ **Honest, leakage-guarded metrics.** Naïve models scored ~0.99 only because of **target
+> leakage** — `corridor` is the priority *designation*, and `is_segment_event` (end-coordinates)
+> is recorded with road closures. Those features are now **excluded per task**, so the scores above
+> reflect genuine prediction. The third model targets the **real observed `resolution_hours`**
+> (time-to-clear), not a synthetic score. Method in the
+> [Project Report](docs/PROJECT_REPORT.md#4-ml-quality--80--10).
 
 ---
 

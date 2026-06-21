@@ -16,15 +16,15 @@ discovery, forecasting, resource allocation, and ML prediction** — exposed
 through both a **command-center dashboard** and a **REST API**. Every stage was
 executed on the real dataset and verified end-to-end (see §10).
 
-**Overall assessment: 7.9 / 10 — strong, production-leaning engineering with a
-few documented caveats** (rule-derived classification targets, single-node compute,
-and demo-grade security).
+**Overall assessment: 8.0 / 10 — strong, production-leaning engineering** with
+honest, leakage-guarded models and a couple of documented constraints
+(single-node compute, demo-grade security).
 
 | Dimension | Score | One-line verdict |
 |---|---|---|
 | Code Quality | 8.5 | Typed, documented, logged, modular, tested; minor broad-`except` nits. |
 | Architecture | 9.0 | Clean layered design, config-driven, graceful degradation. |
-| ML Quality | 7.5 | Rigorous pipeline; classification targets are rule-derived (metrics overstated). |
+| ML Quality | 8.0 | Rigorous, leakage-guarded pipeline; honest metrics; real resolution-time target. |
 | Dashboard | 9.0 | 8 polished pages, maps, KPIs, downloads — all render exception-free. |
 | Scalability | 6.5 | Excellent to ~10⁶ rows; needs distributed compute beyond. |
 | Security | 6.0 | Safe defaults, non-root, validated inputs; no auth / open CORS by design. |
@@ -81,33 +81,39 @@ CI running `pytest`; replace broad excepts with targeted `ImportError`/`ValueErr
 
 ---
 
-## 4. ML Quality — 7.5 / 10
+## 4. ML Quality — 8.0 / 10
 
 **Pipeline rigor (strong):** stratified split → k-fold **CV model selection**
 (RF / XGBoost / LightGBM, HistGB fallback) → **`SelectFromModel`** feature
 selection → **RandomizedSearchCV** tuning → held-out metrics → registry with
 params, metrics and importances. Shared preprocessor prevents train/serve skew.
 
-**Held-out results**
+**Target leakage was found and removed.** Naïve models scored ~0.99, which an
+audit traced to leakage — not skill:
 
-| Task | Type | Metric | Score |
+| Target | Leaking feature | Why it leaks |
+|---|---|---|
+| `priority` | **`corridor`** (0.999 purity) | The corridor *is* the priority designation — a lookup, not a prediction. |
+| `requires_road_closure` | **`is_segment_event`** | Distinct end-coordinates are logged *with* closures (a post-hoc artifact). |
+| `risk_score` | (self) | A hand-weighted composite with no ground truth — circular as an ML target. |
+
+The fix: a per-task **`leakage_features`** guard (`config.models.tasks`) excludes
+those columns, and the regression now targets the **real observed
+`resolution_hours`** (time-to-clear). The engineered `risk_score` is retained
+only as a transparent **operational index** for resource allocation — not an ML
+label. Resulting **honest** held-out metrics:
+
+| Task | Type | Headline | Score |
 |---|---|---|---|
-| Priority | classification | F1 / ROC-AUC | 0.9995 / 1.000 |
-| Closure | classification | F1 / ROC-AUC | 0.9958 / 0.9995 |
-| Risk | regression | R² / MAE / RMSE | 0.709 / 5.76 / 6.67 |
+| Priority (High vs Low) | classification | ROC-AUC / F1 | **0.888** / 0.847 |
+| Closure (7.5% positive) | classification | ROC-AUC / F1 | **0.762** / 0.242 |
+| Resolution time (hours) | regression | R² / MAE | **0.455** / 7.0 h |
 
-> ⚠️ **Key caveat.** The near-perfect
-> classification scores are **not** predictive magic. In this dataset
-> `priority` and `requires_road_closure` are **near-deterministic functions of
-> `event_cause`** (e.g. tree-fall ⇒ closure). The models **recover the business
-> rule**, which is useful for validation/encoding but **overstates real
-> predictive skill**. For genuine value, retrain on operationally uncertain
-> labels.
->
-> `risk_score` has **no ground truth** in the source. It is an **engineered**,
-> transparent weighted proxy (`config.features.risk_weights`); the regressor is
-> **leak-guarded** (its direct components are excluded), giving R²≈0.71.
-> Replace with human-labelled severity in production.
+> These are genuine, modest numbers — exactly what you'd expect once the rule
+> features are removed. **Priority** is real signal (AUC 0.89 from cause, vehicle,
+> time, geography). **Closure** is honestly *hard*: at a 7.5% base rate, recall is
+> low (the AUC 0.76 captures the real-but-limited signal). **Resolution time** is a
+> true real-world regression on observed durations.
 
 **Other limitations**
 - **150-day** series limits time-series depth (no yearly seasonality; Prophet/LSTM
@@ -115,8 +121,9 @@ params, metrics and importances. Shared preprocessor prevents train/serve skew.
 - **SHAP** is listed but not wired into the default flow (importances are logged).
 - No **drift / performance monitoring** loop yet.
 
-**Recommendations:** source real severity labels; add population-stability/drift
-checks; schedule periodic retraining; surface SHAP per-prediction in the API.
+**Recommendations:** improve closure recall via threshold tuning / cost-sensitive
+learning; add population-stability/drift checks; schedule periodic retraining;
+surface SHAP per-prediction in the API.
 
 ---
 
@@ -197,8 +204,8 @@ limiting; re-evaluate shipping the dataset; add dependency scanning (Dependabot)
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Classification metrics misread as predictive skill | High | Med | Documented caveat; retrain on uncertain labels |
-| Engineered `risk_score` mistaken for ground truth | Med | Med | Clearly labelled; leak-guarded; swap real labels |
+| New leakage creeps in via added features | Med | High | Per-task `leakage_features` guard + audit purity before training |
+| Low closure recall misses real closures | Med | Med | Threshold tuning / cost-sensitive learning; surface AUC not just F1 |
 | Public exposure without auth | Med | High | Add auth/TLS/CORS limits before hosting |
 | Schema drift breaks `.get` fallbacks | Low | Med | Add schema contract + tests |
 | Single-node compute at scale | Low (now) | High (later) | Distributed roadmap in §6 |
@@ -216,8 +223,10 @@ limiting; re-evaluate shipping the dataset; add dependency scanning (Dependabot)
 - **Forecast (city):** ETS selected; **~84 incidents/day** next-day projection.
 - **Resources:** fleet 40/60/25 apportioned across 10 zones (exactly conserved);
   *Central Zone 2* top priority.
-- **API:** 9 endpoints, all 200/healthy; example predict → High priority (0.997),
-  no closure (0.005), risk 69.7.
+- **Models (leakage-guarded):** priority ROC-AUC **0.888** / F1 0.847 · closure
+  ROC-AUC **0.762** · resolution-time R² **0.455** (real `resolution_hours`, n=3,274).
+- **API:** 9 endpoints, all 200/healthy; example predict → High priority (0.985),
+  no closure (0.055), resolution ≈ 0.9 h.
 - **Tests:** **14 passed** in ~21 s.
 
 ---

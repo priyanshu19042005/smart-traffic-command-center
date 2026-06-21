@@ -227,6 +227,7 @@ def predict(req: IncidentRequest):
         out.closure = TaskPrediction(
             label="required" if scored["closure_pred"] == 1 else "not_required",
             probability=float(scored["closure_proba"]))
-    if "risk_pred" in scored:
-        out.risk = TaskPrediction(value=float(scored["risk_pred"]))
+    if "resolution_pred" in scored:
+        out.resolution = TaskPrediction(value=round(float(scored["resolution_pred"]), 1),
+                                        unit="hours")
     return out

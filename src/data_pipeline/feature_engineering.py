@@ -11,10 +11,11 @@ What it builds
   day-segment, and *cyclical* sin/cos encodings (so 23:00 is near 00:00).
 * **Geo**       : distance to city centre, coarse grid cell id (spatial bucket).
 * **Severity**  : per-row ``cause_severity`` and ``veh_mass`` weights.
-* **risk_score**: the **engineered regression target** (0-100) — a transparent
+* **risk_score**: a transparent **operational priority index** (0-100) — a
   weighted blend of cause severity, closure, priority, resolution time and
-  vehicle mass. (No ground-truth severity exists in the source; this is the
-  documented proxy label. Swap in human labels in production.)
+  vehicle mass. It feeds resource allocation and dashboard KPIs; it is **not**
+  an ML target (the regression model instead predicts the real, observed
+  ``resolution_hours``). No ground-truth severity exists in the source.
 * ``build_preprocessor`` : a scikit-learn ``ColumnTransformer`` that
   one-hot-encodes categoricals and standard-scales numerics — shared by every
   ML model so train/serve preprocessing is identical.

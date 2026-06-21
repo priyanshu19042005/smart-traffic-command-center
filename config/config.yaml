@@ -190,23 +190,36 @@ hotspots:
 models:
   test_size: 0.2
   cv_folds: 5
-  tuning: { enabled: true, n_iter: 25, scoring_clf: f1, scoring_reg: r2 }
+  tuning: { enabled: true, n_iter: 25, scoring_clf: roc_auc, scoring_reg: r2 }
   feature_selection: { enabled: true, top_k: 25 }
   registry_backend: "auto"   # auto -> mlflow if installed else local json
   mlflow_experiment: "traffic_command_center"
+  # ``leakage_features`` are excluded per task to prevent target leakage /
+  # trivial rule-recovery, so reported metrics reflect genuine prediction:
+  #   * priority is a near-deterministic property of `corridor` (the corridor
+  #     IS the priority designation) -> drop corridor/zone/gba + load proxy.
+  #   * `is_segment_event` (distinct end-coords) is logged with closures and
+  #     near-perfectly encodes the outcome -> drop it for closure.
+  #   * risk regression now targets the REAL observed `resolution_hours`
+  #     instead of an engineered score (the engineered `risk_score` remains a
+  #     transparent operational index for resource allocation, not an ML label).
   tasks:
     priority:
       type: classification
       target: priority
       positive_label: High
+      leakage_features: [corridor, zone, gba_identifier, corridor_load_norm, cause_severity]
     closure:
       type: classification
       target: requires_road_closure
       positive_label: true
       class_weight: balanced
-    risk:
+      leakage_features: [is_segment_event, cause_severity]
+    resolution:
       type: regression
-      target: risk_score
+      target: resolution_hours        # real, observed time-to-resolution (hours)
+      clip_max: 48                     # cap extreme tails for a stable target
+      leakage_features: [status]       # status reveals resolved-ness
 
 # ---------------------------------------------------------------------
 # Forecasting

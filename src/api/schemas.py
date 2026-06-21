@@ -44,12 +44,14 @@ class TaskPrediction(BaseModel):
     label: Optional[str] = None
     probability: Optional[float] = None
     value: Optional[float] = None
+    unit: Optional[str] = None
 
 
 class PredictionResponse(BaseModel):
     priority: Optional[TaskPrediction] = None
     closure: Optional[TaskPrediction] = None
-    risk: Optional[TaskPrediction] = None
+    resolution: Optional[TaskPrediction] = Field(
+        default=None, description="Predicted time-to-resolution in hours (real target).")
     model_versions: dict = Field(default_factory=dict)
 
 

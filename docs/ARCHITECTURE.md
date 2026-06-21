@@ -147,7 +147,8 @@ flowchart TB
 | **Config-driven** (`config.yaml`) | Tune weights, params, fleet sizes without touching code; reproducible. |
 | **String-typed ingest** | No silent numeric coercion; cleaning owns all casting → auditable. |
 | **Spatial KNN imputation** | Recovers 4,668 missing zones from geography instead of dropping rows. |
-| **Engineered `risk_score`** | No ground-truth severity exists; transparent weighted proxy, leak-guarded in training. |
+| **Per-task leakage guards** | `corridor`/`is_segment_event` etc. excluded so classifiers predict genuinely, not recover a rule. |
+| **`risk_score` = operational index** | Transparent weighted score for resource allocation only; the ML regression instead predicts the **real** `resolution_hours`. |
 | **Optional-dependency fallbacks** | Runs fully on sklearn/statsmodels/plotly; XGBoost/LightGBM/Prophet/MLflow/Folium enhance when present. |
 | **Shared preprocessor** | Same fitted `ColumnTransformer` at train & serve → no train/serve skew. |
 | **One image, three roles** | pipeline/api/dashboard from a single Dockerfile via command override → smaller surface. |

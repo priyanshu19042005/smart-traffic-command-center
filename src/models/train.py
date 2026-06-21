@@ -201,19 +201,25 @@ def _reg_metrics(y_true, y_pred) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 def _prepare_xy(df: pd.DataFrame, task_cfg: Config) -> tuple[pd.DataFrame, np.ndarray, str]:
     target = task_cfg.target
-    df = df[df[target].notna()].copy()
-    feats = [c for c in (CATEGORICAL_FEATURES + NUMERIC_FEATURES) if c in df.columns]
-    # Avoid target leakage: drop direct components of engineered risk_score.
-    if task_cfg.type == "regression" and task_cfg.target == "risk_score":
-        for leak in ["cause_severity", "veh_mass"]:
-            if leak in feats:
-                feats.remove(leak)
+    if target not in df.columns:
+        raise KeyError(f"Target '{target}' not in features; re-run the data pipeline.")
+    df = df[df[target].notna()].copy()           # null targets dropped (e.g. unresolved)
+
+    # Per-task leakage guard: exclude features that trivially encode the target.
+    leak = list(getattr(task_cfg, "leakage_features", []) or [])
+    feats = [c for c in (CATEGORICAL_FEATURES + NUMERIC_FEATURES)
+             if c in df.columns and c not in leak]
     X = df[feats]
+
     if task_cfg.type == "classification":
         pos = str(task_cfg.positive_label).lower()
         y = (df[target].astype(str).str.lower() == pos).astype(int).to_numpy()
     else:
         y = df[target].astype(float).to_numpy()
+        cap = getattr(task_cfg, "clip_max", None)
+        lo = getattr(task_cfg, "min_target", 0)
+        if cap is not None:
+            y = np.clip(y, lo, cap)
     return X, y, target
 
 

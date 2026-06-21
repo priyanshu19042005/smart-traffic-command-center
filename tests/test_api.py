@@ -39,7 +39,7 @@ def test_predict_endpoint(client):
     assert r.status_code in {200, 503}
     if r.status_code == 200:
         data = r.json()
-        assert "priority" in data and "risk" in data
+        assert "priority" in data and "resolution" in data
 
 
 def test_predict_validation_rejects_bad_hour(client):

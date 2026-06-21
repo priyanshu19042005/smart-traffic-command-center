@@ -184,12 +184,15 @@ curl -X POST http://localhost:8000/api/v1/predict \
 
 ```json
 {
-  "priority": {"label": "High", "probability": 0.9975, "value": null},
-  "closure":  {"label": "not_required", "probability": 0.0049, "value": null},
-  "risk":     {"label": null, "probability": null, "value": 69.71},
-  "model_versions": {"priority":"random_forest","closure":"random_forest","risk":"hist_gb"}
+  "priority":   {"label": "High", "probability": 0.985, "value": null, "unit": null},
+  "closure":    {"label": "not_required", "probability": 0.055, "value": null, "unit": null},
+  "resolution": {"label": null, "probability": null, "value": 0.9, "unit": "hours"},
+  "model_versions": {"priority":"hist_gb","closure":"random_forest","resolution":"random_forest"}
 }
 ```
+
+`resolution.value` is the predicted **time-to-clear in hours** (a real, observed
+target — `resolution_hours`), not a synthetic score.
 
 ### Status codes
 | Code | Meaning |
@@ -206,6 +209,6 @@ curl -X POST http://localhost:8000/api/v1/predict \
   `src/api/main.py` for production.
 * **No auth** by default — front with an API gateway / reverse proxy (see
   `docs/DEPLOYMENT.md`) and add API keys/OAuth before exposing publicly.
-* The `priority`/`closure` models reflect near-deterministic business rules in
-  the source data (see `docs/PROJECT_REPORT.md` §ML Quality) — treat their
-  confidence accordingly.
+* Models are **leakage-guarded** (designation/artifact features excluded per task),
+  so confidences are honest: priority ROC-AUC ≈ 0.89, closure ≈ 0.76 (imbalanced,
+  low recall), resolution-time R² ≈ 0.46. See `docs/PROJECT_REPORT.md` §4.

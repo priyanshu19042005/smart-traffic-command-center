@@ -464,8 +464,9 @@ def page_resources(df: pd.DataFrame) -> None:
 # ===========================================================================
 def page_ml(df: pd.DataFrame) -> None:
     st.markdown("<div class='cc-title'>ML Predictions</div>", unsafe_allow_html=True)
-    st.markdown("<div class='cc-sub'>Priority, Road-Closure & Risk models — live scoring "
-                "and evaluation diagnostics</div>", unsafe_allow_html=True)
+    st.markdown("<div class='cc-sub'>Priority, Road-Closure & Resolution-time models "
+                "(leakage-guarded) — live scoring and evaluation diagnostics</div>",
+                unsafe_allow_html=True)
     ensure_models()
 
     tabs = st.tabs(["🎯 Live Scoring", "📈 Model Performance"])
@@ -499,9 +500,9 @@ def page_ml(df: pd.DataFrame) -> None:
                                   f"p={r['closure_proba']:.2f}",
                                   BAD if r["closure_pred"] == 1 else GOOD),
                                   unsafe_allow_html=True)
-                if "risk_pred" in scored:
-                    m[2].markdown(kpi_card("Risk Score", f"{r['risk_pred']:.0f}", "/100",
-                                  WARN), unsafe_allow_html=True)
+                if "resolution_pred" in scored:
+                    m[2].markdown(kpi_card("Est. Resolution", f"{r['resolution_pred']:.1f}",
+                                  "hours", WARN), unsafe_allow_html=True)
             except FileNotFoundError:
                 need_pipeline("Models not trained. Run `python -m src.models.train`.")
 

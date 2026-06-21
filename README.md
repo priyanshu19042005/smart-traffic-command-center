@@ -86,6 +86,12 @@ docker compose up api dashboard     # serve both
 make install && make pipeline && make dashboard   # or: make api / make test
 ```
 
+### ☁️ Streamlit Community Cloud (zero-config)
+Deploy with **main file `dashboard/app.py`** — no pre-build needed. The dashboard
+**self-bootstraps**: on first load it builds the data, analytics, forecasts and
+(compact) models from the committed raw CSV, then caches them. See
+[deployment guide](docs/DEPLOYMENT.md#3a-streamlit-community-cloud-zero-config-demo).
+
 ---
 
 ## 🔌 REST API

@@ -34,6 +34,8 @@ if str(ROOT) not in sys.path:
 
 from dashboard.theme import (inject_css, kpi_card, register_plotly_template,
                              CATEGORY_COLORS, ACCENT, GOOD, WARN, BAD)
+from dashboard.bootstrap import (ensure_features, ensure_analytics,
+                                 ensure_forecasts, ensure_models)
 from src.utils import load_config, get_path
 
 st.set_page_config(page_title="Smart Traffic Command Center",
@@ -89,8 +91,10 @@ def need_pipeline(msg: str = "Artifact not found.") -> None:
 
 
 # ===========================================================================
-# Sidebar — branding + global filters
+# Bootstrap artifacts on first load (no-op once built) then load events
 # ===========================================================================
+ensure_features()
+ensure_analytics()
 events = load_events()
 
 st.sidebar.markdown("## 🛰️ TRAFFIC COMMAND")
@@ -360,6 +364,7 @@ def page_forecast(df: pd.DataFrame) -> None:
     st.markdown("<div class='cc-title'>Forecasting Center</div>", unsafe_allow_html=True)
     st.markdown("<div class='cc-sub'>Next day / week / month incident forecasts with model "
                 "back-test leaderboard</div>", unsafe_allow_html=True)
+    ensure_forecasts()
     fc = load_csv("forecasts.csv")
     summary = load_csv("forecast_summary.csv")
     metrics = load_csv("forecast_metrics.csv")
@@ -461,6 +466,7 @@ def page_ml(df: pd.DataFrame) -> None:
     st.markdown("<div class='cc-title'>ML Predictions</div>", unsafe_allow_html=True)
     st.markdown("<div class='cc-sub'>Priority, Road-Closure & Risk models — live scoring "
                 "and evaluation diagnostics</div>", unsafe_allow_html=True)
+    ensure_models()
 
     tabs = st.tabs(["🎯 Live Scoring", "📈 Model Performance"])
     with tabs[0]:

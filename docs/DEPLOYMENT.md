@@ -67,14 +67,36 @@ docker run --rm -p 8000:8000 tcc uvicorn src.api.main:app --host 0.0.0.0 --port 
 
 ## 3. Cloud
 
-### 3a. Render / Railway / Fly.io (fastest hosted demo)
+### 3a. Streamlit Community Cloud (zero-config demo)
+The dashboard **self-bootstraps** — no pre-build step or committed artifacts needed.
+
+1. Push the repo to GitHub (already done).
+2. On [share.streamlit.io](https://share.streamlit.io): **New app** → pick the repo/branch.
+3. **Main file path:** `dashboard/app.py` · **Python:** 3.11 or 3.12 (Advanced settings).
+4. Deploy. On **first load** the app detects the missing artifacts and builds them
+   from the committed raw CSV — features + analytics on landing (~30 s), forecasts
+   when the Forecasting page opens, and **compact models** (fast, no tuning) when
+   the ML page opens. Everything is `@st.cache_resource`-cached thereafter.
+
+> Why this matters: `data/processed`, `outputs/` and `models/` are git-ignored, so a
+> fresh clone has only code + the raw CSV. Without bootstrap every page would show
+> *"run `python -m src.run_pipeline`"*. The bootstrap (`dashboard/bootstrap.py`) removes
+> that step. Models are trained in a memory-safe **fast mode** (`train_all(fast=True)`)
+> so they fit within Community Cloud's RAM; metrics are slightly below the fully-tuned
+> local run (which you still get via `python -m src.run_pipeline`).
+
+`requirements.txt` is installed automatically. Optional heavy libs (XGBoost/Prophet/
+TensorFlow) are intentionally **not** in it, so the build stays light and the platform
+uses its sklearn/statsmodels fallbacks.
+
+### 3b. Render / Railway / Fly.io (fastest hosted demo)
 * **Render:** New → *Web Service* from the repo. Build: `pip install -r requirements.txt`.
   * Dashboard start: `streamlit run dashboard/app.py --server.port $PORT --server.address 0.0.0.0`
   * API start: `uvicorn src.api.main:app --host 0.0.0.0 --port $PORT`
   * Add a one-off **Job**/pre-deploy running `python -m src.run_pipeline` (artifacts on a persistent disk).
 * **Railway/Fly:** point at the `Dockerfile`; set the start command per service; mount a volume for `/app/outputs` and `/app/models`.
 
-### 3b. AWS EC2 (VM)
+### 3c. AWS EC2 (VM)
 ```bash
 sudo yum install -y docker git && sudo service docker start
 git clone <repo> && cd smart-traffic-command-center
@@ -83,7 +105,7 @@ sudo docker compose up -d api dashboard
 ```
 Put an **ALB / Nginx** in front; open 80/443 only; terminate TLS at the proxy.
 
-### 3c. Kubernetes (sketch)
+### 3d. Kubernetes (sketch)
 * One `Job` for the pipeline writing to a `PersistentVolumeClaim`.
 * Two `Deployments` (api, dashboard) mounting the same PVC read-only.
 * `Service` + `Ingress` per app; `readinessProbe` → `/api/v1/health` and

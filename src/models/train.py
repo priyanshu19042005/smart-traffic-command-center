@@ -136,10 +136,26 @@ def _candidates(task_type: str, seed: int, class_weight: Optional[str]) -> dict[
     return cands
 
 
-def _build_pipeline(estimator, preprocessor, task_type: str, cfg: Config, seed: int) -> Pipeline:
+def _fast_candidates(task_type: str, seed: int, class_weight: Optional[str]) -> dict[str, tuple]:
+    """A single, compact Random Forest — for resource-constrained environments
+    (e.g. Streamlit Cloud). No CV/tuning, ``n_jobs=1`` to cap memory."""
+    if task_type == "classification":
+        from sklearn.ensemble import RandomForestClassifier
+        est = RandomForestClassifier(n_estimators=120, max_depth=16, n_jobs=1,
+                                     class_weight=class_weight, random_state=seed)
+    else:
+        from sklearn.ensemble import RandomForestRegressor
+        est = RandomForestRegressor(n_estimators=120, max_depth=16, n_jobs=1,
+                                    random_state=seed)
+    return {"random_forest": (est, {})}
+
+
+def _build_pipeline(estimator, preprocessor, task_type: str, cfg: Config, seed: int,
+                    use_selection: Optional[bool] = None) -> Pipeline:
     steps = [("prep", preprocessor)]
     fs = cfg.models.feature_selection
-    if fs.enabled:
+    enabled = fs.enabled if use_selection is None else use_selection
+    if enabled:
         from sklearn.feature_selection import SelectFromModel
         if task_type == "classification":
             from sklearn.ensemble import RandomForestClassifier as RF
@@ -205,7 +221,7 @@ def _prepare_xy(df: pd.DataFrame, task_cfg: Config) -> tuple[pd.DataFrame, np.nd
 # Train one task
 # ---------------------------------------------------------------------------
 def train_task(task_name: str, df: pd.DataFrame, cfg: Optional[Config] = None,
-               registry: Optional[ModelRegistry] = None) -> dict[str, Any]:
+               registry: Optional[ModelRegistry] = None, fast: bool = False) -> dict[str, Any]:
     cfg = cfg or load_config()
     registry = registry or ModelRegistry(cfg)
     task_cfg = getattr(cfg.models.tasks, task_name)
@@ -223,44 +239,53 @@ def train_task(task_name: str, df: pd.DataFrame, cfg: Optional[Config] = None,
 
     preprocessor, _, _ = build_preprocessor(X, CATEGORICAL_FEATURES, NUMERIC_FEATURES)
     class_weight = getattr(task_cfg, "class_weight", None) if task_cfg.type == "classification" else None
-    cands = _candidates(task_cfg.type, seed, class_weight)
-
-    # --- 1) CV model selection -----------------------------------------
     scoring = (cfg.models.tuning.scoring_clf if task_cfg.type == "classification"
                else cfg.models.tuning.scoring_reg)
-    if task_cfg.type == "classification":
-        cv = StratifiedKFold(cfg.models.cv_folds, shuffle=True, random_state=seed)
-    else:
-        cv = KFold(cfg.models.cv_folds, shuffle=True, random_state=seed)
+    cv_scores: dict[str, float] = {}
 
-    cv_scores = {}
-    for name, (est, _) in cands.items():
-        pipe = _build_pipeline(est, preprocessor, task_cfg.type, cfg, seed)
-        try:
-            score = cross_val_score(pipe, Xtr, ytr, cv=cv, scoring=scoring, n_jobs=-1).mean()
-        except Exception as exc:
-            log.warning("CV failed for %s: %s", name, exc)
-            continue
-        cv_scores[name] = score
-        log.info("  CV %-14s %s=%.4f", name, scoring, score)
-    if not cv_scores:
-        raise RuntimeError(f"No model could be cross-validated for '{task_name}'.")
-    best_name = max(cv_scores, key=cv_scores.get)
-    log.info("Best family: %s (%s=%.4f)", best_name, scoring, cv_scores[best_name])
-
-    # --- 2) Hyperparameter tuning on winner ----------------------------
-    best_est, param_dist = cands[best_name]
-    best_pipe = _build_pipeline(best_est, preprocessor, task_cfg.type, cfg, seed)
-    if cfg.models.tuning.enabled and param_dist:
-        search = RandomizedSearchCV(
-            best_pipe, param_dist, n_iter=cfg.models.tuning.n_iter, cv=cv,
-            scoring=scoring, n_jobs=-1, random_state=seed, refit=True)
-        search.fit(Xtr, ytr)
-        model, best_params = search.best_estimator_, search.best_params_
-        log.info("Tuned %s: best CV %s=%.4f", best_name, scoring, search.best_score_)
+    if fast:
+        # --- Fast path: one compact RF, no CV/tuning/selection (cloud-safe) ---
+        best_name, (best_est, _) = next(iter(
+            _fast_candidates(task_cfg.type, seed, class_weight).items()))
+        model = _build_pipeline(best_est, preprocessor, task_cfg.type, cfg, seed,
+                                use_selection=False)
+        model.fit(Xtr, ytr)
+        best_params = {"fast": True}
+        log.info("Fast-trained %s (%s).", task_name, best_name)
     else:
-        best_pipe.fit(Xtr, ytr)
-        model, best_params = best_pipe, {}
+        cands = _candidates(task_cfg.type, seed, class_weight)
+        # --- 1) CV model selection -------------------------------------
+        if task_cfg.type == "classification":
+            cv = StratifiedKFold(cfg.models.cv_folds, shuffle=True, random_state=seed)
+        else:
+            cv = KFold(cfg.models.cv_folds, shuffle=True, random_state=seed)
+        for name, (est, _) in cands.items():
+            pipe = _build_pipeline(est, preprocessor, task_cfg.type, cfg, seed)
+            try:
+                score = cross_val_score(pipe, Xtr, ytr, cv=cv, scoring=scoring, n_jobs=-1).mean()
+            except Exception as exc:
+                log.warning("CV failed for %s: %s", name, exc)
+                continue
+            cv_scores[name] = score
+            log.info("  CV %-14s %s=%.4f", name, scoring, score)
+        if not cv_scores:
+            raise RuntimeError(f"No model could be cross-validated for '{task_name}'.")
+        best_name = max(cv_scores, key=cv_scores.get)
+        log.info("Best family: %s (%s=%.4f)", best_name, scoring, cv_scores[best_name])
+
+        # --- 2) Hyperparameter tuning on winner ------------------------
+        best_est, param_dist = cands[best_name]
+        best_pipe = _build_pipeline(best_est, preprocessor, task_cfg.type, cfg, seed)
+        if cfg.models.tuning.enabled and param_dist:
+            search = RandomizedSearchCV(
+                best_pipe, param_dist, n_iter=cfg.models.tuning.n_iter, cv=cv,
+                scoring=scoring, n_jobs=-1, random_state=seed, refit=True)
+            search.fit(Xtr, ytr)
+            model, best_params = search.best_estimator_, search.best_params_
+            log.info("Tuned %s: best CV %s=%.4f", best_name, scoring, search.best_score_)
+        else:
+            best_pipe.fit(Xtr, ytr)
+            model, best_params = best_pipe, {}
 
     # --- 3) Held-out evaluation ----------------------------------------
     if task_cfg.type == "classification":
@@ -307,15 +332,19 @@ def _extract_importances(model: Pipeline) -> dict[str, float]:
         return {}
 
 
-def train_all(df: Optional[pd.DataFrame] = None, cfg: Optional[Config] = None) -> dict[str, Any]:
-    """Train every task defined in ``config.models.tasks``."""
+def train_all(df: Optional[pd.DataFrame] = None, cfg: Optional[Config] = None,
+              fast: bool = False) -> dict[str, Any]:
+    """Train every task defined in ``config.models.tasks``.
+
+    Set ``fast=True`` for a compact, no-tuning fit (resource-constrained hosts).
+    """
     cfg = cfg or load_config()
     if df is None:
         df = pd.read_parquet(get_path("features", cfg=cfg))
     registry = ModelRegistry(cfg)
     results = {}
     for task_name in cfg.models.tasks:
-        results[task_name] = train_task(task_name, df, cfg, registry)
+        results[task_name] = train_task(task_name, df, cfg, registry, fast=fast)
     log.info("All tasks trained. Registry index: %s", registry.index_path)
     return results
 

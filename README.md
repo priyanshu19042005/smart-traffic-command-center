@@ -29,12 +29,11 @@ a REST API.**
 
 Built on the **Astram** Bengaluru dataset (**8,173 incidents × 46 columns**, Nov 2023 – Apr 2024),
 the platform ingests messy event logs and delivers six operational capabilities through a
-modern **Smart City Command Center** UI and a documented API. Every component has been
-**executed and verified on the real data** — not scaffolding.
+modern **Smart City Command Center** UI and a documented API. Every component runs and has
+been **verified end-to-end on the real data**.
 
-> 🧭 New here? Read the **[Project Report & Technical Review](docs/PROJECT_REPORT.md)** for the
-> honest, graded breakdown (incl. the important caveat that the classification targets are
-> rule-derived in this dataset).
+> 🧭 New here? The **[Project Report & Technical Review](docs/PROJECT_REPORT.md)** has the full
+> graded breakdown, including why the classification targets are rule-derived in this dataset.
 
 ---
 
@@ -125,9 +124,17 @@ resources · quality · predict`. Full reference → **[docs/API.md](docs/API.md
 ⑦ ML Predictions · ⑧ Data Quality Monitoring`
 
 Interactive filters · Plotly maps & charts · KPI cards · ROC/confusion diagnostics ·
-CSV/GeoJSON downloads. All pages render exception-free (verified via Streamlit `AppTest`).
+CSV/GeoJSON downloads.
 
-> 📸 *Add screenshots to `docs/img/` and embed them here for maximum portfolio impact.*
+![Executive Overview](docs/img/01_executive_overview.png)
+
+| Traffic Hotspots (DBSCAN + risk) | Road Health Index |
+|:--:|:--:|
+| ![Hotspots](docs/img/04_hotspots.png) | ![Road Health](docs/img/03_road_health.png) |
+| **Forecasting Center** | **Model Performance** |
+| ![Forecasting](docs/img/05_forecasting.png) | ![Model Performance](docs/img/09_model_performance.png) |
+| **Resource Allocation** | **Data Quality Monitoring** |
+| ![Resources](docs/img/06_resources.png) | ![Data Quality](docs/img/08_data_quality.png) |
 
 ---
 
@@ -163,9 +170,9 @@ flipkart/
 | Models | priority F1 **0.9995** · closure F1 **0.996** · risk R² **0.71** (MAE 5.8) |
 | Tests | **14 passed** in ~21 s |
 
-> ⚠️ **Honesty note:** the ~0.99 classification scores reflect that `priority`/`closure`
+> ⚠️ **Note on these metrics:** the ~0.99 classification scores reflect that `priority`/`closure`
 > are **near-deterministic rules of `event_cause`** in this data — the models recover the
-> rule. `risk_score` is an **engineered** (leak-guarded) proxy. Details in the
+> rule rather than predicting it. `risk_score` is an **engineered** (leak-guarded) proxy. Details in the
 > [Project Report](docs/PROJECT_REPORT.md#4-ml-quality--75--10).
 
 ---

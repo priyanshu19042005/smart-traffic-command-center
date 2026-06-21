@@ -99,7 +99,8 @@ uses its sklearn/statsmodels fallbacks.
 ### 3c. AWS EC2 (VM)
 ```bash
 sudo yum install -y docker git && sudo service docker start
-git clone <repo> && cd smart-traffic-command-center
+git clone https://github.com/priyanshu19042005/smart-traffic-command-center.git
+cd smart-traffic-command-center
 sudo docker compose run --rm pipeline
 sudo docker compose up -d api dashboard
 ```

@@ -17,8 +17,8 @@ through both a **command-center dashboard** and a **REST API**. Every stage was
 executed on the real dataset and verified end-to-end (see §10).
 
 **Overall assessment: 7.9 / 10 — strong, production-leaning engineering with a
-few honest caveats** (rule-derived classification targets, single-node compute,
-and demo-grade security) that are documented rather than hidden.
+few documented caveats** (rule-derived classification targets, single-node compute,
+and demo-grade security).
 
 | Dimension | Score | One-line verdict |
 |---|---|---|
@@ -96,7 +96,7 @@ params, metrics and importances. Shared preprocessor prevents train/serve skew.
 | Closure | classification | F1 / ROC-AUC | 0.9958 / 0.9995 |
 | Risk | regression | R² / MAE / RMSE | 0.709 / 5.76 / 6.67 |
 
-> ⚠️ **Honest caveat (the most important finding).** The near-perfect
+> ⚠️ **Key caveat.** The near-perfect
 > classification scores are **not** predictive magic. In this dataset
 > `priority` and `requires_road_closure` are **near-deterministic functions of
 > `event_cause`** (e.g. tree-fall ⇒ closure). The models **recover the business
@@ -106,7 +106,7 @@ params, metrics and importances. Shared preprocessor prevents train/serve skew.
 >
 > `risk_score` has **no ground truth** in the source. It is an **engineered**,
 > transparent weighted proxy (`config.features.risk_weights`); the regressor is
-> **leak-guarded** (its direct components are excluded), giving an honest R²≈0.71.
+> **leak-guarded** (its direct components are excluded), giving R²≈0.71.
 > Replace with human-labelled severity in production.
 
 **Other limitations**

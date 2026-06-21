@@ -33,7 +33,7 @@ modern **Smart City Command Center** UI and a documented API. Every component ru
 been **verified end-to-end on the real data**.
 
 > 🧭 New here? The **[Project Report & Technical Review](docs/PROJECT_REPORT.md)** has the full
-> graded breakdown, including how target leakage was found and removed so the metrics are honest.
+> 7-dimension graded breakdown, including the validation behind the honest, leakage-free metrics.
 
 ---
 

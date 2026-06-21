@@ -8,6 +8,10 @@ real-time intelligence, road-health scores, geospatial hotspots, forecasts,
 resource plans and ML predictions — served via a command-center dashboard *and*
 a REST API.**
 
+### 🔴 [**Launch the Live Demo →**](https://smart-traffic-command-center-5aa5hpssbwajldkgfmawc6.streamlit.app/)
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://smart-traffic-command-center-5aa5hpssbwajldkgfmawc6.streamlit.app/)
+
 ![Python](https://img.shields.io/badge/Python-3.10–3.12-3776AB?logo=python&logoColor=white)
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-ML-F7931E?logo=scikitlearn&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
@@ -15,6 +19,7 @@ a REST API.**
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-14%20passing-brightgreen)
 ![Status](https://img.shields.io/badge/status-verified%20end--to--end-success)
+[![Live Demo](https://img.shields.io/badge/demo-live-FF4B4B?logo=streamlit&logoColor=white)](https://smart-traffic-command-center-5aa5hpssbwajldkgfmawc6.streamlit.app/)
 
 </div>
 

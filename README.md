@@ -167,7 +167,7 @@ flipkart/
 | Road Health | corridor mean **80.2** · zone mean **62.4** (worst: South Zone 2, 42.5) |
 | Hotspots | **133** DBSCAN clusters · top pothole hotspot = 71 incidents |
 | Forecast | city-wide **~84 incidents/day** (ETS auto-selected) |
-| Models (leakage-guarded) | priority ROC-AUC **0.89** · closure ROC-AUC **0.76** · resolution-time R² **0.46** |
+| Models (leakage-guarded, threshold-tuned) | priority ROC-AUC **0.89** / PR-AUC 0.93 · closure ROC-AUC **0.76** / F1 0.38 · resolution-time R² **0.46** |
 | Tests | **14 passed** in ~21 s |
 
 > ✅ **Honest, leakage-guarded metrics.** Naïve models scored ~0.99 only because of **target

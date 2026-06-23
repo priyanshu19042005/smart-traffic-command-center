@@ -171,9 +171,16 @@ def _build_pipeline(estimator, preprocessor, task_type: str, cfg: Config, seed: 
 # ---------------------------------------------------------------------------
 # Metrics
 # ---------------------------------------------------------------------------
-def _clf_metrics(y_true, y_pred, y_proba) -> dict[str, float]:
+def _clf_metrics(y_true, y_proba, threshold: float = 0.5) -> dict[str, float]:
+    """Classification metrics at a given decision threshold.
+
+    Includes **PR-AUC (average precision)** and ROC-AUC, which are
+    threshold-independent and the right headline for imbalanced targets.
+    """
     from sklearn.metrics import (accuracy_score, precision_score, recall_score,
-                                 f1_score, roc_auc_score)
+                                 f1_score, roc_auc_score, average_precision_score)
+    y_proba = np.asarray(y_proba, dtype=float)
+    y_pred = (y_proba >= threshold).astype(int)
     m = {
         "accuracy": accuracy_score(y_true, y_pred),
         "precision": precision_score(y_true, y_pred, zero_division=0),
@@ -184,7 +191,31 @@ def _clf_metrics(y_true, y_pred, y_proba) -> dict[str, float]:
         m["roc_auc"] = roc_auc_score(y_true, y_proba)
     except Exception:
         m["roc_auc"] = float("nan")
+    try:
+        m["pr_auc"] = average_precision_score(y_true, y_proba)
+    except Exception:
+        m["pr_auc"] = float("nan")
+    m["threshold"] = round(float(threshold), 4)
     return m
+
+
+def _optimal_threshold(model, X, y, seed: int) -> float:
+    """F1-maximising decision threshold from out-of-fold probabilities on the
+    TRAINING data (no test leakage). Falls back to 0.5 on any issue."""
+    from sklearn.model_selection import cross_val_predict
+    from sklearn.metrics import precision_recall_curve
+    try:
+        cv = StratifiedKFold(3, shuffle=True, random_state=seed)
+        proba = cross_val_predict(model, X, y, cv=cv,
+                                  method="predict_proba", n_jobs=-1)[:, 1]
+        prec, rec, thr = precision_recall_curve(y, proba)
+        if len(thr) == 0:
+            return 0.5
+        f1 = 2 * prec[:-1] * rec[:-1] / (prec[:-1] + rec[:-1] + 1e-9)
+        return float(thr[int(np.argmax(f1))])
+    except Exception as exc:  # pragma: no cover
+        log.debug("Threshold search failed (%s); using 0.5.", exc)
+        return 0.5
 
 
 def _reg_metrics(y_true, y_pred) -> dict[str, float]:
@@ -294,10 +325,13 @@ def train_task(task_name: str, df: pd.DataFrame, cfg: Optional[Config] = None,
             model, best_params = best_pipe, {}
 
     # --- 3) Held-out evaluation ----------------------------------------
+    threshold = 0.5
     if task_cfg.type == "classification":
-        ypred = model.predict(Xte)
-        yproba = (model.predict_proba(Xte)[:, 1] if hasattr(model, "predict_proba") else ypred)
-        metrics = _clf_metrics(yte, ypred, yproba)
+        yproba = (model.predict_proba(Xte)[:, 1] if hasattr(model, "predict_proba")
+                  else model.predict(Xte))
+        # Tune the decision threshold on train (vital for imbalanced targets).
+        threshold = _optimal_threshold(model, Xtr, ytr, seed)
+        metrics = _clf_metrics(yte, yproba, threshold=threshold)
     else:
         ypred = model.predict(Xte)
         metrics = _reg_metrics(yte, ypred)
@@ -313,7 +347,7 @@ def train_task(task_name: str, df: pd.DataFrame, cfg: Optional[Config] = None,
         feature_names=list(X.columns),
         importances=importances,
         extra={"best_model": best_name, "task_type": task_cfg.type,
-               "target": target, "cv_scores": cv_scores,
+               "target": target, "cv_scores": cv_scores, "threshold": threshold,
                "n_train": len(Xtr), "n_test": len(Xte)},
     )
     return {"task": task_name, "best_model": best_name, "metrics": metrics}

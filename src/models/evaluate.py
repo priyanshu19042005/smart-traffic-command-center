@@ -55,9 +55,11 @@ def evaluate_task(task: str, df: pd.DataFrame, cfg: Optional[Config] = None,
     if task_cfg.type == "classification":
         from sklearn.metrics import (confusion_matrix, classification_report,
                                      roc_curve, precision_recall_curve)
-        ypred = model.predict(Xte)
-        yproba = (model.predict_proba(Xte)[:, 1] if hasattr(model, "predict_proba") else ypred)
-        report["metrics"] = _clf_metrics(yte, ypred, yproba)
+        yproba = (model.predict_proba(Xte)[:, 1] if hasattr(model, "predict_proba")
+                  else model.predict(Xte))
+        thr = float(registry.metadata(task).get("threshold", 0.5))
+        ypred = (np.asarray(yproba) >= thr).astype(int)
+        report["metrics"] = _clf_metrics(yte, yproba, threshold=thr)
         report["confusion_matrix"] = confusion_matrix(yte, ypred).tolist()
         report["classification_report"] = classification_report(
             yte, ypred, output_dict=True, zero_division=0)

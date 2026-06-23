@@ -62,8 +62,9 @@ class Predictor:
         if task_cfg.type == "classification":
             proba = (model.predict_proba(X)[:, 1] if hasattr(model, "predict_proba")
                      else model.predict(X))
+            thr = float(self.meta.get(task, {}).get("threshold", 0.5))
             out[f"{task}_proba"] = np.round(proba, 4)
-            out[f"{task}_pred"] = (proba >= 0.5).astype(int)
+            out[f"{task}_pred"] = (proba >= thr).astype(int)
             out[f"{task}_label"] = np.where(
                 out[f"{task}_pred"] == 1, str(task_cfg.positive_label), "other")
         else:

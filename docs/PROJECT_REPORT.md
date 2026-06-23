@@ -85,8 +85,9 @@ CI running `pytest`; replace broad excepts with targeted `ImportError`/`ValueErr
 
 **Pipeline rigor (strong):** stratified split → k-fold **CV model selection**
 (RF / XGBoost / LightGBM, HistGB fallback) → **`SelectFromModel`** feature
-selection → **RandomizedSearchCV** tuning → held-out metrics → registry with
-params, metrics and importances. Shared preprocessor prevents train/serve skew.
+selection → **RandomizedSearchCV** tuning → **CV-tuned decision threshold** →
+held-out metrics → registry with params, metrics, threshold and importances.
+Shared preprocessor prevents train/serve skew.
 
 **Target leakage was found and removed.** Naïve models scored ~0.99, which an
 audit traced to leakage — not skill:
@@ -98,22 +99,25 @@ audit traced to leakage — not skill:
 | `risk_score` | (self) | A hand-weighted composite with no ground truth — circular as an ML target. |
 
 The fix: a per-task **`leakage_features`** guard (`config.models.tasks`) excludes
-those columns, and the regression now targets the **real observed
-`resolution_hours`** (time-to-clear). The engineered `risk_score` is retained
-only as a transparent **operational index** for resource allocation — not an ML
-label. Resulting **honest** held-out metrics:
+those columns; the regression now targets the **real observed `resolution_hours`**
+(time-to-clear); and classifiers use a **CV-tuned decision threshold** (chosen on
+training out-of-fold predictions, never the test set) instead of a naïve 0.5 —
+essential for the 7.5%-positive closure target. The engineered `risk_score` is
+retained only as a transparent **operational index** for resource allocation, not
+an ML label. Resulting **honest** held-out metrics:
 
-| Task | Type | Headline | Score |
-|---|---|---|---|
-| Priority (High vs Low) | classification | ROC-AUC / F1 | **0.888** / 0.847 |
-| Closure (7.5% positive) | classification | ROC-AUC / F1 | **0.762** / 0.242 |
-| Resolution time (hours) | regression | R² / MAE | **0.455** / 7.0 h |
+| Task | Type | ROC-AUC | PR-AUC | F1 | Recall |
+|---|---|---|---|---|---|
+| Priority (High vs Low) | classification | **0.888** | **0.932** | **0.851** | 0.930 |
+| Closure (7.5% positive) | classification | **0.762** | 0.330 | 0.377 | 0.387 |
+| Resolution time (hours) | regression | R²=**0.455** · MAE **7.0 h** · n=3,274 | | | |
 
-> These are genuine, modest numbers — exactly what you'd expect once the rule
-> features are removed. **Priority** is real signal (AUC 0.89 from cause, vehicle,
-> time, geography). **Closure** is honestly *hard*: at a 7.5% base rate, recall is
-> low (the AUC 0.76 captures the real-but-limited signal). **Resolution time** is a
-> true real-world regression on observed durations.
+> Genuine numbers, not inflated. **Priority** is strong real signal (AUC 0.89,
+> PR-AUC 0.93 from cause, vehicle, time, geography). **Closure** is honestly *hard*
+> at a 7.5% base rate — but threshold tuning lifts it from F1 0.24 / recall 0.13
+> (naïve 0.5) to **F1 0.38 / recall 0.39**, i.e. it now flags ~40% of closures, and
+> PR-AUC 0.33 is ~4.4× the base rate. **Resolution time** is a real-world regression
+> on observed durations.
 
 **Other limitations**
 - **150-day** series limits time-series depth (no yearly seasonality; Prophet/LSTM
@@ -223,10 +227,11 @@ limiting; re-evaluate shipping the dataset; add dependency scanning (Dependabot)
 - **Forecast (city):** ETS selected; **~84 incidents/day** next-day projection.
 - **Resources:** fleet 40/60/25 apportioned across 10 zones (exactly conserved);
   *Central Zone 2* top priority.
-- **Models (leakage-guarded):** priority ROC-AUC **0.888** / F1 0.847 · closure
-  ROC-AUC **0.762** · resolution-time R² **0.455** (real `resolution_hours`, n=3,274).
-- **API:** 9 endpoints, all 200/healthy; example predict → High priority (0.985),
-  no closure (0.055), resolution ≈ 0.9 h.
+- **Models (leakage-guarded, threshold-tuned):** priority ROC-AUC **0.888** /
+  PR-AUC 0.932 / F1 0.851 · closure ROC-AUC **0.762** / F1 0.377 / recall 0.39 ·
+  resolution-time R² **0.455** (real `resolution_hours`, n=3,274).
+- **API:** 9 endpoints, all 200/healthy; example predict → High priority,
+  closure flag, resolution-time estimate (hours).
 - **Tests:** **14 passed** in ~21 s.
 
 ---

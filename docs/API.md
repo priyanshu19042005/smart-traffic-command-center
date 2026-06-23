@@ -209,6 +209,8 @@ target — `resolution_hours`), not a synthetic score.
   `src/api/main.py` for production.
 * **No auth** by default — front with an API gateway / reverse proxy (see
   `docs/DEPLOYMENT.md`) and add API keys/OAuth before exposing publicly.
-* Models are **leakage-guarded** (designation/artifact features excluded per task),
-  so confidences are honest: priority ROC-AUC ≈ 0.89, closure ≈ 0.76 (imbalanced,
-  low recall), resolution-time R² ≈ 0.46. See `docs/PROJECT_REPORT.md` §4.
+* Models are **leakage-guarded** and use a **CV-tuned decision threshold**, so
+  confidences are honest: priority ROC-AUC ≈ 0.89 (PR-AUC 0.93), closure ROC-AUC
+  ≈ 0.76 / F1 0.38 (imbalanced 7.5%), resolution-time R² ≈ 0.46. The `probability`
+  fields are raw model scores; labels apply the tuned threshold. See
+  `docs/PROJECT_REPORT.md` §4.

@@ -32,16 +32,27 @@ def _cfg():
 
 @st.cache_resource(show_spinner="🛰️ Preparing data (first load only)…")
 def ensure_features() -> bool:
-    """Guarantee the engineered feature table exists; build it if not."""
+    """Guarantee the engineered feature table **and** the data-quality validation
+    report exist; build whatever is missing from the raw CSV."""
     cfg = _cfg()
-    if get_path("features", cfg=cfg).exists():
+    feats_path = get_path("features", cfg=cfg)
+    report_path = get_path("outputs_dir", cfg=cfg) / "validation_report.json"
+    if feats_path.exists() and report_path.exists():
         return True
-    log.info("Features missing — building from raw CSV.")
+    log.info("Bootstrapping data artifacts from raw CSV.")
     from src.data_pipeline.ingest import ingest
+    from src.data_pipeline.validate import validate
     from src.data_pipeline.clean import clean
     from src.data_pipeline.feature_engineering import engineer_features
     raw, _ = ingest(cfg)
-    engineer_features(clean(raw, cfg), cfg)        # persists parquet
+    if not report_path.exists():                   # powers the Data Quality page
+        try:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            validate(raw, cfg, save=True)
+        except Exception as exc:                   # pragma: no cover
+            log.warning("Validation bootstrap failed: %s", exc)
+    if not feats_path.exists():
+        engineer_features(clean(raw, cfg), cfg)    # persists parquet
     return True
 
 

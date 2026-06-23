@@ -128,13 +128,15 @@ CSV/GeoJSON downloads.
 
 ![Executive Overview](docs/img/01_executive_overview.png)
 
-| Traffic Hotspots (DBSCAN + risk) | Road Health Index |
+| ML Live Scoring — plain-English predictions | Model Performance — honest, leakage-guarded |
 |:--:|:--:|
-| ![Hotspots](docs/img/04_hotspots.png) | ![Road Health](docs/img/03_road_health.png) |
-| **Forecasting Center** | **Model Performance** |
-| ![Forecasting](docs/img/05_forecasting.png) | ![Model Performance](docs/img/09_model_performance.png) |
-| **Resource Allocation** | **Data Quality Monitoring** |
-| ![Resources](docs/img/06_resources.png) | ![Data Quality](docs/img/08_data_quality.png) |
+| ![Live Scoring](docs/img/10_live_scoring.png) | ![Model Performance](docs/img/09_model_performance.png) |
+| **Traffic Hotspots** (DBSCAN + risk) | **Forecasting Center** |
+| ![Hotspots](docs/img/04_hotspots.png) | ![Forecasting](docs/img/05_forecasting.png) |
+| **Road Health Index** | **Resource Allocation** |
+| ![Road Health](docs/img/03_road_health.png) | ![Resources](docs/img/06_resources.png) |
+
+![Data Quality Monitoring](docs/img/11_data_quality.png)
 
 ---
 

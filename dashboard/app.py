@@ -471,15 +471,18 @@ def page_ml(df: pd.DataFrame) -> None:
 
     tabs = st.tabs(["🎯 Live Scoring", "📈 Model Performance"])
     with tabs[0]:
-        st.markdown("##### Score a hypothetical incident")
+        st.markdown("##### Predict outcomes for a reported incident")
+        st.caption("Describe an incident as it would first be reported. The models estimate "
+                   "three operational outcomes: **how urgent** it is, **whether the road must "
+                   "be closed**, and **how long** it will take to clear.")
         if df.empty:
             return need_pipeline()
         col = st.columns(4)
-        cause = col[0].selectbox("Cause", sorted(df["event_cause"].unique()))
-        corr = col[1].selectbox("Corridor", sorted(df["corridor"].unique()))
-        veh = col[2].selectbox("Vehicle", sorted(df["veh_type"].unique()))
-        hour = col[3].slider("Hour", 0, 23, 9)
-        if st.button("🚀 Predict", width="stretch"):
+        cause = col[0].selectbox("Incident cause", sorted(df["event_cause"].unique()))
+        corr = col[1].selectbox("Corridor / road", sorted(df["corridor"].unique()))
+        veh = col[2].selectbox("Vehicle type", sorted(df["veh_type"].unique()))
+        hour = col[3].slider("Hour of day", 0, 23, 9)
+        if st.button("🚀 Predict outcomes", width="stretch"):
             try:
                 from src.models.predict import Predictor
                 row = df.iloc[[0]].copy()
@@ -487,24 +490,45 @@ def page_ml(df: pd.DataFrame) -> None:
                 row["veh_type"] = veh; row["hour"] = hour
                 row["is_rush_hour"] = int(hour in {8, 9, 10, 18, 19, 20})
                 scored = Predictor(CFG).predict_frame(row)
-                r = scored.iloc[0]
-                m = st.columns(3)
-                if "priority_label" in scored:
-                    m[0].markdown(kpi_card("Priority", r["priority_label"].upper(),
-                                  f"p={r['priority_proba']:.2f}",
-                                  BAD if r["priority_label"] == "High" else GOOD),
-                                  unsafe_allow_html=True)
-                if "closure_label" in scored:
-                    m[1].markdown(kpi_card("Road Closure",
-                                  "REQUIRED" if r["closure_pred"] == 1 else "No",
-                                  f"p={r['closure_proba']:.2f}",
-                                  BAD if r["closure_pred"] == 1 else GOOD),
-                                  unsafe_allow_html=True)
-                if "resolution_pred" in scored:
-                    m[2].markdown(kpi_card("Est. Resolution", f"{r['resolution_pred']:.1f}",
-                                  "hours", WARN), unsafe_allow_html=True)
+                # Persist so results survive subsequent reruns (don't vanish).
+                st.session_state["ml_pred"] = {
+                    "r": scored.iloc[0].to_dict(),
+                    "cause": cause, "veh": veh, "corr": corr, "hour": hour}
             except FileNotFoundError:
                 need_pipeline("Models not trained. Run `python -m src.models.train`.")
+
+        if st.session_state.get("ml_pred"):
+            _p = st.session_state["ml_pred"]
+            r, cause, veh, corr, hour = (_p["r"], _p["cause"], _p["veh"],
+                                         _p["corr"], _p["hour"])
+            m = st.columns(3)
+            has_p, has_c, has_r = ("priority_label" in r, "closure_label" in r,
+                                   "resolution_pred" in r)
+            if has_p:
+                is_high = r["priority_label"] == "High"
+                m[0].markdown(kpi_card("🚦 Incident Priority", r["priority_label"].upper(),
+                              f"{r['priority_proba']:.0%} confidence",
+                              BAD if is_high else GOOD), unsafe_allow_html=True)
+                m[0].caption("How urgent the response is — High vs Low.")
+            if has_c:
+                yes = r["closure_pred"] == 1
+                m[1].markdown(kpi_card("🚧 Road Closure", "LIKELY" if yes else "UNLIKELY",
+                              f"{r['closure_proba']:.0%} closure probability",
+                              BAD if yes else GOOD), unsafe_allow_html=True)
+                m[1].caption("Will the incident require closing the road?")
+            if has_r:
+                m[2].markdown(kpi_card("⏱️ Resolution Time", f"≈ {r['resolution_pred']:.1f} h",
+                              "estimated time to clear", WARN), unsafe_allow_html=True)
+                m[2].caption("How long until the incident is cleared.")
+            if has_p and has_c and has_r:
+                art = lambda w: "an" if w[:1].lower() in "aeiou" else "a"  # noqa: E731
+                cz, vz = cause.replace("_", " "), veh.replace("_", " ")
+                st.info(
+                    f"**In plain English:** {art(cz)} **{cz}** involving {art(vz)} "
+                    f"**{vz}** on **{corr}** at **{hour:02d}:00** is predicted to be "
+                    f"**{r['priority_label']} priority**, "
+                    f"**{'likely to need a road closure' if r['closure_pred'] == 1 else 'unlikely to need a road closure'}**, "
+                    f"and to take **about {r['resolution_pred']:.1f} hours** to clear.")
 
     with tabs[1]:
         for task in CFG.models.tasks:
@@ -555,7 +579,10 @@ def page_quality(df: pd.DataFrame) -> None:
     st.markdown("<div class='cc-title'>Data Quality Monitoring</div>", unsafe_allow_html=True)
     st.markdown("<div class='cc-sub'>Validation gates, completeness and freshness of the "
                 "ingest pipeline</div>", unsafe_allow_html=True)
-    rep = load_json("validation_report.json")
+    ensure_features()                       # generates validation_report.json if missing
+    # Read directly (not via cached loader) so a freshly-bootstrapped report shows.
+    _vp = OUT / "validation_report.json"
+    rep = json.loads(_vp.read_text(encoding="utf-8")) if _vp.exists() else {}
     if not rep:
         return need_pipeline("Validation report not found.")
 
